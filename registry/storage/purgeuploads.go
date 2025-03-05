@@ -70,6 +70,13 @@ func getOutstandingUploads(ctx context.Context, driver storageDriver.StorageDriv
 	err = driver.Walk(ctx, root, func(fileInfo storageDriver.FileInfo) error {
 		filePath := fileInfo.Path()
 		_, file := path.Split(filePath)
+
+		// Handle directory with trailing slash such as empty S3 directory.
+		if file == "" {
+			logrus.Warnf("Encountered an empty file name at path: %s", filePath)
+			return nil
+		}
+
 		if file[0] == '_' {
 			// Reserved directory
 			inUploadDir = (file == "_uploads")

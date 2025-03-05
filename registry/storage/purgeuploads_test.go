@@ -163,3 +163,52 @@ func TestPurgeMissingStartedAt(t *testing.T) {
 		t.Errorf("Files unexpectedly deleted: %s", deleted)
 	}
 }
+
+func TestPurgeHandlesDirectoriesProperly(t *testing.T) {
+	fs, ctx := testUploadFS(t, 3, "test-repo", time.Now().Add(-2*time.Hour))
+
+	// Create two directories with files and one empty directory in between
+	dirPath1, err := pathFor(uploadDataPathSpec{name: "test-repo", id: uuid.NewString()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.PutContent(ctx, dirPath1+"/file1.txt", []byte("test1")); err != nil {
+		t.Fatal("Unable to create file1 in directory 1")
+	}
+
+	emptyDirPath, err := pathFor(uploadDataPathSpec{name: "test-repo", id: "empty-dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.PutContent(ctx, emptyDirPath+"/", []byte("")); err != nil {
+		t.Fatal("Unable to create empty directory placeholder")
+	}
+
+	dirPath2, err := pathFor(uploadDataPathSpec{name: "test-repo", id: uuid.NewString()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.PutContent(ctx, dirPath2+"/file2.txt", []byte("test2")); err != nil {
+		t.Fatal("Unable to create file2 in directory 2")
+	}
+
+	uploadData, errs := getOutstandingUploads(ctx, fs)
+
+	// Ensure no errors occurred during traversal
+	if len(errs) != 0 {
+		t.Errorf("Unexpected errors from getOutstandingUploads: %v", errs)
+	}
+
+	// Ensure files inside directories are counted, empty directories are ignored
+	expectedUploads := 3 + 2 // Original 3 + two new files in directories
+	if len(uploadData) != expectedUploads {
+		t.Errorf("Expected %d uploads, but got %d", expectedUploads, len(uploadData))
+	}
+
+	// Ensure the empty directory is NOT included
+	for key := range uploadData {
+		if strings.Contains(key, "empty-dir") {
+			t.Errorf("Empty directory should not be included in upload data: %s", key)
+		}
+	}
+}
